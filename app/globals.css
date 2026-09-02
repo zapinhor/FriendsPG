@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-void text-ink font-body antialiased;
+    background-image:
+      radial-gradient(ellipse at top, rgba(108, 123, 212, 0.06), transparent 60%),
+      radial-gradient(ellipse at bottom, rgba(201, 122, 61, 0.05), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  h1, h2, h3 {
+    @apply font-display;
+  }
+
+  ::selection {
+    background: rgba(201, 122, 61, 0.35);
+  }
+
+  *:focus-visible {
+    outline: 2px solid theme("colors.arcane");
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-panel border border-hairline rounded-panel shadow-panel;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-panel bg-ember px-4 py-2
+      text-sm font-medium text-void transition-colors hover:bg-[#DA8A4E]
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-panel border border-hairline
+      bg-panel-raised px-4 py-2 text-sm font-medium text-ink transition-colors
+      hover:border-ink-muted disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .input-field {
+    @apply w-full rounded-panel border border-hairline bg-void px-3 py-2 text-sm
+      text-ink placeholder:text-ink-muted focus:border-arcane focus:outline-none;
+  }
+}
