@@ -1,7 +1,11 @@
+import { MemberActions } from "./member-actions";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { CreateInvite } from "./create-invite";
+import Link from "next/link";
 import type { CampaignRole, Profile } from "@/types/entities";
+import Image from "next/image";
+import { LeaveCampaign } from "./leave-campaign";
 
 export default async function CampaignPage({
   params,
@@ -37,6 +41,14 @@ export default async function CampaignPage({
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
+    <div className="mb-6">
+  <Link
+    href="/dashboard"
+    className="text-sm text-ink-muted hover:text-ink"
+  >
+    ← Voltar para minhas campanhas
+  </Link>
+</div>
       <header className="mb-8">
         <h1 className="text-3xl">{campaign.name}</h1>
         {campaign.description && (
@@ -48,6 +60,14 @@ export default async function CampaignPage({
           </span>
         )}
       </header>
+      {myRole && myRole !== "owner" && (
+  <div className="mb-6 flex justify-end">
+    <LeaveCampaign
+      campaignId={campaign.id}
+      userId={user.id}
+    />
+  </div>
+)}
 
       <section className="panel p-6">
         <h2 className="text-lg">A mesa ainda não está pronta</h2>
@@ -82,14 +102,42 @@ export default async function CampaignPage({
             const profile = m.profiles as unknown as Profile;
             return (
               <li
-                key={profile.id}
-                className="flex items-center justify-between py-2.5"
-              >
-                <span>{profile.display_name}</span>
-                <span className="text-xs capitalize text-ink-muted">
-                  {m.role}
-                </span>
-              </li>
+              key={profile.id}
+              className="flex items-center justify-between gap-4 py-2.5"
+            >
+              <div className="flex items-center gap-3">
+  {profile.avatar_url ? (
+    <Image
+  src={profile.avatar_url}
+  alt={profile.display_name}
+  width={36}
+  height={36}
+  className="h-9 w-9 rounded-full object-cover"
+/>
+  ) : (
+    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-sm text-ink-muted">
+      {profile.display_name.slice(0, 1).toUpperCase()}
+    </div>
+  )}
+
+  <div>
+    <span>{profile.display_name}</span>
+
+    <span className="ml-3 text-xs capitalize text-ink-muted">
+      {m.role}
+    </span>
+  </div>
+</div>
+
+              {myRole && (
+                <MemberActions
+                  campaignId={campaign.id}
+                  userId={profile.id}
+                  memberRole={m.role as CampaignRole}
+                  currentUserRole={myRole}
+              />
+            )}
+          </li>
             );
           })}
         </ul>
