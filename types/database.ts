@@ -41,6 +41,47 @@ export interface Database {
           { foreignKeyName: "campaign_invites_created_by_fkey"; columns: ["created_by"]; isOneToOne: false; referencedRelation: "profiles"; referencedColumns: ["id"] },
         ];
       };
+      scenes: {
+  Row: {
+    id: string;
+    campaign_id: string;
+    name: string;
+    background_url: string | null;
+    width: number;
+    height: number;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  Insert: {
+    id?: string;
+    campaign_id: string;
+    name: string;
+    background_url?: string | null;
+    width?: number;
+    height?: number;
+    is_active?: boolean;
+    created_at?: string;
+    updated_at?: string;
+  };
+  Update: {
+    name?: string;
+    background_url?: string | null;
+    width?: number;
+    height?: number;
+    is_active?: boolean;
+    updated_at?: string;
+  };
+  Relationships: [
+    {
+      foreignKeyName: "scenes_campaign_id_fkey";
+      columns: ["campaign_id"];
+      isOneToOne: false;
+      referencedRelation: "campaigns";
+      referencedColumns: ["id"];
+    },
+  ];
+};
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -49,6 +90,13 @@ export interface Database {
         Args: { invite_code: string };
         Returns: { campaign_id: string; campaign_name: string; campaign_description: string | null; gm_display_name: string | null; valid: boolean }[];
       };
+      set_active_scene: {
+  Args: {
+    target_campaign_id: string;
+    target_scene_id: string;
+  };
+  Returns: undefined;
+};
       update_my_profile: {
         Args: { new_username: string; new_display_name: string; new_avatar_url: string | null };
         Returns: undefined;

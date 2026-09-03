@@ -6,7 +6,7 @@ const displayFont = Cormorant_Garamond({ subsets: ["latin"], variable: "--font-d
 const bodyFont = Inter({ subsets: ["latin"], variable: "--font-body" });
 
 export const metadata: Metadata = {
-  title: "Mesa Viva",
+  title: "FriendsPG",
   description: "Sua mesa de RPG, sempre pronta para a próxima sessão.",
 };
 
