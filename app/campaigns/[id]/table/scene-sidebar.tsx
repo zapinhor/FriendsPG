@@ -10,32 +10,53 @@ type Scene = {
   is_active: boolean;
 };
 
+type Asset = {
+  id: string;
+  name: string;
+  preview_url: string | null;
+};
+
 type SceneSidebarProps = {
   campaignId: string;
   scenes: Scene[];
+  assets: Asset[];
   canManage: boolean;
 };
 
 export function SceneSidebar({
   campaignId,
   scenes,
+  assets,
   canManage,
 }: SceneSidebarProps) {
   const router = useRouter();
   const supabase = createClient();
 
-  const [loadingSceneId, setLoadingSceneId] = useState<string | null>(null);
-  const [deletingSceneId, setDeletingSceneId] = useState<string | null>(null);
+  const [loadingSceneId, setLoadingSceneId] =
+    useState<string | null>(null);
 
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [deletingSceneId, setDeletingSceneId] =
+    useState<string | null>(null);
+
+  const [showCreateForm, setShowCreateForm] =
+    useState(false);
+
+  const [creating, setCreating] =
+    useState(false);
 
   const [name, setName] = useState("");
-  const [backgroundUrl, setBackgroundUrl] = useState("");
+  const [backgroundAssetId, setBackgroundAssetId] =
+    useState("");
   const [width, setWidth] = useState("1920");
   const [height, setHeight] = useState("1080");
 
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] =
+    useState<string | null>(null);
+
+  const selectedAsset =
+    assets.find(
+      (asset) => asset.id === backgroundAssetId,
+    ) ?? null;
 
   async function activateScene(sceneId: string) {
     if (!canManage) return;
@@ -43,14 +64,18 @@ export function SceneSidebar({
     setLoadingSceneId(sceneId);
     setError(null);
 
-    const { error } = await supabase.rpc("set_active_scene", {
-      target_campaign_id: campaignId,
-      target_scene_id: sceneId,
-    });
+    const { error } = await supabase.rpc(
+      "set_active_scene",
+      {
+        target_campaign_id: campaignId,
+        target_scene_id: sceneId,
+      },
+    );
 
     setLoadingSceneId(null);
 
     if (error) {
+      console.error(error);
       setError("Não foi possível trocar a cena.");
       return;
     }
@@ -58,7 +83,9 @@ export function SceneSidebar({
     router.refresh();
   }
 
-  async function createScene(event: FormEvent<HTMLFormElement>) {
+  async function createScene(
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
 
     if (!canManage) return;
@@ -77,31 +104,41 @@ export function SceneSidebar({
       parsedWidth <= 0 ||
       parsedHeight <= 0
     ) {
-      setError("Largura e altura precisam ser números maiores que zero.");
+      setError(
+        "Largura e altura precisam ser maiores que zero.",
+      );
       return;
     }
 
     setCreating(true);
     setError(null);
 
-    const { error } = await supabase.from("scenes").insert({
-      campaign_id: campaignId,
-      name: name.trim(),
-      background_url: backgroundUrl.trim() || null,
-      width: parsedWidth,
-      height: parsedHeight,
-      is_active: false,
-    });
+    const { error } = await supabase
+      .from("scenes")
+      .insert({
+        campaign_id: campaignId,
+        name: name.trim(),
+
+        background_asset_id:
+          backgroundAssetId || null,
+
+        background_url: null,
+
+        width: parsedWidth,
+        height: parsedHeight,
+        is_active: false,
+      });
 
     setCreating(false);
 
     if (error) {
+      console.error(error);
       setError("Não foi possível criar a cena.");
       return;
     }
 
     setName("");
-    setBackgroundUrl("");
+    setBackgroundAssetId("");
     setWidth("1920");
     setHeight("1080");
     setShowCreateForm(false);
@@ -114,18 +151,20 @@ export function SceneSidebar({
 
     if (scene.is_active) {
       setError(
-        "Troque para outra cena antes de excluir a cena que está ativa."
+        "Troque para outra cena antes de excluir a cena ativa.",
       );
       return;
     }
 
     if (scenes.length <= 1) {
-      setError("A campanha precisa ter pelo menos uma cena.");
+      setError(
+        "A campanha precisa ter pelo menos uma cena.",
+      );
       return;
     }
 
     const confirmed = window.confirm(
-      `Tem certeza que deseja excluir a cena "${scene.name}"?`
+      `Tem certeza que deseja excluir a cena "${scene.name}"?`,
     );
 
     if (!confirmed) return;
@@ -142,6 +181,7 @@ export function SceneSidebar({
     setDeletingSceneId(null);
 
     if (error) {
+      console.error(error);
       setError("Não foi possível excluir a cena.");
       return;
     }
@@ -150,10 +190,12 @@ export function SceneSidebar({
   }
 
   return (
-    <aside className="w-72 shrink-0 overflow-y-auto border-r border-white/10 bg-[#101117] p-4">
+    <div className="p-4">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-medium">Cenas</h2>
+          <h2 className="text-sm font-medium">
+            Cenas
+          </h2>
 
           <p className="mt-1 text-xs text-ink-muted">
             {canManage
@@ -166,7 +208,9 @@ export function SceneSidebar({
           <button
             type="button"
             onClick={() => {
-              setShowCreateForm((current) => !current);
+              setShowCreateForm(
+                (current) => !current,
+              );
               setError(null);
             }}
             className="rounded-lg border border-white/10 px-2.5 py-1.5 text-xs hover:bg-white/10"
@@ -189,7 +233,9 @@ export function SceneSidebar({
             <input
               type="text"
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) =>
+                setName(event.target.value)
+              }
               placeholder="Ex.: Floresta"
               required
               className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/30"
@@ -198,17 +244,50 @@ export function SceneSidebar({
 
           <div>
             <label className="mb-1 block text-xs text-ink-muted">
-              URL do mapa
+              Mapa
             </label>
 
-            <input
-              type="text"
-              value={backgroundUrl}
-              onChange={(event) => setBackgroundUrl(event.target.value)}
-              placeholder="/maps/meu-mapa.jpg"
-              className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/30"
-            />
+            <select
+              value={backgroundAssetId}
+              onChange={(event) =>
+                setBackgroundAssetId(
+                  event.target.value,
+                )
+              }
+              className="w-full rounded-lg border border-white/10 bg-[#15171e] px-3 py-2 text-sm outline-none focus:border-white/30"
+            >
+              <option value="">
+                Sem mapa
+              </option>
+
+              {assets.map((asset) => (
+                <option
+                  key={asset.id}
+                  value={asset.id}
+                >
+                  {asset.name}
+                </option>
+              ))}
+            </select>
           </div>
+
+          {selectedAsset?.preview_url && (
+            <div className="overflow-hidden rounded-lg border border-white/10 bg-black/20">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={selectedAsset.preview_url}
+                alt={selectedAsset.name}
+                className="aspect-video w-full object-cover"
+              />
+            </div>
+          )}
+
+          {assets.length === 0 && (
+            <p className="text-[10px] leading-relaxed text-ink-muted">
+              Nenhum asset disponível. Adicione uma
+              imagem na aba Assets primeiro.
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -220,7 +299,9 @@ export function SceneSidebar({
                 type="number"
                 min="1"
                 value={width}
-                onChange={(event) => setWidth(event.target.value)}
+                onChange={(event) =>
+                  setWidth(event.target.value)
+                }
                 className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/30"
               />
             </div>
@@ -234,7 +315,9 @@ export function SceneSidebar({
                 type="number"
                 min="1"
                 value={height}
-                onChange={(event) => setHeight(event.target.value)}
+                onChange={(event) =>
+                  setHeight(event.target.value)
+                }
                 className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/30"
               />
             </div>
@@ -246,12 +329,16 @@ export function SceneSidebar({
               disabled={creating}
               className="rounded-lg bg-white px-3 py-2 text-xs text-black disabled:opacity-50"
             >
-              {creating ? "Criando..." : "Criar cena"}
+              {creating
+                ? "Criando..."
+                : "Criar cena"}
             </button>
 
             <button
               type="button"
-              onClick={() => setShowCreateForm(false)}
+              onClick={() =>
+                setShowCreateForm(false)
+              }
               disabled={creating}
               className="rounded-lg border border-white/10 px-3 py-2 text-xs hover:bg-white/10"
             >
@@ -285,10 +372,13 @@ export function SceneSidebar({
                 loadingSceneId !== null ||
                 scene.is_active
               }
-              onClick={() => activateScene(scene.id)}
+              onClick={() =>
+                activateScene(scene.id)
+              }
               className={[
                 "w-full px-1 py-1 text-left text-sm",
-                canManage && !scene.is_active
+                canManage &&
+                !scene.is_active
                   ? "cursor-pointer"
                   : "cursor-default",
               ].join(" ")}
@@ -315,8 +405,12 @@ export function SceneSidebar({
                 {!scene.is_active && (
                   <button
                     type="button"
-                    disabled={loadingSceneId !== null}
-                    onClick={() => activateScene(scene.id)}
+                    disabled={
+                      loadingSceneId !== null
+                    }
+                    onClick={() =>
+                      activateScene(scene.id)
+                    }
                     className="text-xs text-ink-muted hover:text-white"
                   >
                     Ativar
@@ -329,7 +423,9 @@ export function SceneSidebar({
                     deletingSceneId !== null ||
                     scene.is_active
                   }
-                  onClick={() => deleteScene(scene)}
+                  onClick={() =>
+                    deleteScene(scene)
+                  }
                   className="text-xs text-red-400 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {deletingSceneId === scene.id
@@ -343,10 +439,10 @@ export function SceneSidebar({
       </div>
 
       {error && (
-        <p className="mt-4 text-xs text-red-500">
+        <p className="mt-4 text-xs text-red-400">
           {error}
         </p>
       )}
-    </aside>
+    </div>
   );
 }
