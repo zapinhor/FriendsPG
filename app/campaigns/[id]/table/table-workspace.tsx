@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { SceneProp } from "@/types/entities";
 import { PropPanel } from "./prop-panel";
@@ -62,7 +63,69 @@ export function TableWorkspace({
   const [props, setProps] = useState(initialProps);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const clientIdRef = useRef(crypto.randomUUID());
   const selectedProp = props.find((prop) => prop.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (!scene) return;
+    let active = true;
+    const channel = supabase.channel(`scene:${scene.id}`, {
+      config: { private: true, broadcast: { self: false, ack: false } },
+    });
+    channelRef.current = channel;
+
+    channel
+      .on("broadcast", { event: "prop-move" }, ({ payload }) => {
+        if (
+          payload?.clientId === clientIdRef.current ||
+          typeof payload?.propId !== "string" ||
+          typeof payload?.x !== "number" ||
+          typeof payload?.y !== "number" ||
+          !Number.isFinite(payload.x) ||
+          !Number.isFinite(payload.y)
+        ) return;
+        setProps((current) => current.map((prop) => (
+          prop.id === payload.propId ? { ...prop, x: payload.x, y: payload.y } : prop
+        )));
+      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "scene_props", filter: `scene_id=eq.${scene.id}` },
+        (payload) => {
+          if (!active) return;
+          if (payload.eventType === "DELETE") {
+            const deletedId = (payload.old as { id?: string }).id;
+            if (deletedId) setProps((current) => current.filter((prop) => prop.id !== deletedId));
+            return;
+          }
+          const changed = payload.new as SceneProp;
+          if (!changed?.id) return;
+          setProps((current) => {
+            const exists = current.some((prop) => prop.id === changed.id);
+            return exists
+              ? current.map((prop) => (prop.id === changed.id ? changed : prop))
+              : [...current, changed];
+          });
+        },
+      );
+
+    void supabase.realtime.setAuth().then(() => channel.subscribe());
+    return () => {
+      active = false;
+      channelRef.current = null;
+      void supabase.removeChannel(channel);
+    };
+  }, [scene, supabase]);
+
+  function previewMove(id: string, x: number, y: number) {
+    if (!canManage) return;
+    void channelRef.current?.send({
+      type: "broadcast",
+      event: "prop-move",
+      payload: { propId: id, x, y, clientId: clientIdRef.current },
+    });
+  }
 
   async function createProp(asset: Asset) {
     if (!scene || !asset.url || busy) return;
@@ -166,6 +229,7 @@ export function TableWorkspace({
           canManage={canManage}
           selectedPropId={selectedId}
           onSelectProp={setSelectedId}
+          onPreviewMove={previewMove}
           onMoveProp={(id, x, y) => updateProp(id, { x, y })}
         />
       </section>

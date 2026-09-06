@@ -11,6 +11,7 @@ type TableCanvasProps = {
   canManage: boolean;
   selectedPropId: string | null;
   onSelectProp: (id: string | null) => void;
+  onPreviewMove: (id: string, x: number, y: number) => void;
   onMoveProp: (id: string, x: number, y: number) => void | Promise<void>;
 };
 
@@ -19,15 +20,17 @@ const MAX_ZOOM = 3;
 const ZOOM_SPEED = 0.0015;
 const FIT_PADDING = 80;
 
-export function TableCanvas({ scene, props, canManage, selectedPropId, onSelectProp, onMoveProp }: TableCanvasProps) {
+export function TableCanvas({ scene, props, canManage, selectedPropId, onSelectProp, onPreviewMove, onMoveProp }: TableCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const selectRef = useRef(onSelectProp);
+  const previewMoveRef = useRef(onPreviewMove);
   const moveRef = useRef(onMoveProp);
 
   useEffect(() => {
     selectRef.current = onSelectProp;
+    previewMoveRef.current = onPreviewMove;
     moveRef.current = onMoveProp;
-  }, [onSelectProp, onMoveProp]);
+  }, [onSelectProp, onPreviewMove, onMoveProp]);
 
   useEffect(() => {
     const target = containerRef.current;
@@ -83,6 +86,7 @@ export function TableCanvas({ scene, props, canManage, selectedPropId, onSelectP
           let dragging = false;
           let offsetX = 0;
           let offsetY = 0;
+          let lastBroadcastAt = 0;
           sprite.on("pointerdown", (event: FederatedPointerEvent) => {
             event.stopPropagation();
             selectRef.current(prop.id);
@@ -97,6 +101,11 @@ export function TableCanvas({ scene, props, canManage, selectedPropId, onSelectP
             if (!dragging) return;
             const local = world.toLocal(event.global);
             sprite.position.set(local.x - offsetX, local.y - offsetY);
+            const now = performance.now();
+            if (now - lastBroadcastAt >= 33) {
+              lastBroadcastAt = now;
+              previewMoveRef.current(prop.id, sprite.x, sprite.y);
+            }
           });
           const finishDrag = () => {
             if (!dragging) return;
