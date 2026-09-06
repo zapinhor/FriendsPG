@@ -50,6 +50,8 @@ type ScenePropUpdate = Partial<
   >
 >;
 
+type RealtimeStatus = "connecting" | "connected" | "reconnecting" | "offline";
+
 export function TableWorkspace({
   campaignId,
   userId,
@@ -63,62 +65,112 @@ export function TableWorkspace({
   const [props, setProps] = useState(initialProps);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>(scene ? "connecting" : "offline");
   const channelRef = useRef<RealtimeChannel | null>(null);
   const clientIdRef = useRef(crypto.randomUUID());
   const selectedProp = props.find((prop) => prop.id === selectedId) ?? null;
 
   useEffect(() => {
     if (!scene) return;
+    const activeScene = scene;
     let active = true;
-    const channel = supabase.channel(`scene:${scene.id}`, {
-      config: { private: true, broadcast: { self: false, ack: false } },
-    });
-    channelRef.current = channel;
+    let currentChannel: RealtimeChannel | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectAttempts = 0;
 
-    channel
-      .on("broadcast", { event: "prop-move" }, ({ payload }) => {
-        if (
-          payload?.clientId === clientIdRef.current ||
-          typeof payload?.propId !== "string" ||
-          typeof payload?.x !== "number" ||
-          typeof payload?.y !== "number" ||
-          !Number.isFinite(payload.x) ||
-          !Number.isFinite(payload.y)
-        ) return;
-        const width = typeof payload.width === "number" && Number.isFinite(payload.width) ? payload.width : undefined;
-        const height = typeof payload.height === "number" && Number.isFinite(payload.height) ? payload.height : undefined;
-        setProps((current) => current.map((prop) => (
-          prop.id === payload.propId
-            ? { ...prop, x: payload.x, y: payload.y, ...(width ? { width } : {}), ...(height ? { height } : {}) }
-            : prop
-        )));
-      })
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "scene_props", filter: `scene_id=eq.${scene.id}` },
-        (payload) => {
-          if (!active) return;
-          if (payload.eventType === "DELETE") {
-            const deletedId = (payload.old as { id?: string }).id;
-            if (deletedId) setProps((current) => current.filter((prop) => prop.id !== deletedId));
-            return;
+    function receiveTransform(payload: Record<string, unknown>) {
+      if (
+        payload.clientId === clientIdRef.current ||
+        typeof payload.propId !== "string" ||
+        typeof payload.x !== "number" ||
+        typeof payload.y !== "number" ||
+        !Number.isFinite(payload.x) ||
+        !Number.isFinite(payload.y)
+      ) return;
+      const width = typeof payload.width === "number" && Number.isFinite(payload.width) ? payload.width : undefined;
+      const height = typeof payload.height === "number" && Number.isFinite(payload.height) ? payload.height : undefined;
+      setProps((current) => current.map((prop) => (
+        prop.id === payload.propId
+          ? { ...prop, x: payload.x as number, y: payload.y as number, ...(width ? { width } : {}), ...(height ? { height } : {}) }
+          : prop
+      )));
+    }
+
+    function scheduleReconnect(channel: RealtimeChannel) {
+      if (!active || currentChannel !== channel || reconnectTimer) return;
+      currentChannel = null;
+      channelRef.current = null;
+      setRealtimeStatus("reconnecting");
+      const delay = Math.min(1000 * 2 ** reconnectAttempts, 10000);
+      reconnectAttempts += 1;
+      void supabase.removeChannel(channel).finally(() => {
+        if (!active) return;
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          void connect();
+        }, delay);
+      });
+    }
+
+    async function connect() {
+      setRealtimeStatus(reconnectAttempts ? "reconnecting" : "connecting");
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!active || !session?.access_token) {
+        if (active) setRealtimeStatus("offline");
+        return;
+      }
+      await supabase.realtime.setAuth(session.access_token);
+      if (!active) return;
+
+      const channel = supabase.channel(`scene:${activeScene.id}`, {
+        config: { private: true, broadcast: { self: false, ack: false } },
+      });
+      currentChannel = channel;
+      channelRef.current = channel;
+      channel
+        .on("broadcast", { event: "prop-move" }, ({ payload }) => receiveTransform(payload))
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "scene_props", filter: `scene_id=eq.${activeScene.id}` },
+          (payload) => {
+            if (!active) return;
+            if (payload.eventType === "DELETE") {
+              const deletedId = (payload.old as { id?: string }).id;
+              if (deletedId) setProps((current) => current.filter((prop) => prop.id !== deletedId));
+              return;
+            }
+            const changed = payload.new as SceneProp;
+            if (!changed?.id) return;
+            setProps((current) => {
+              const exists = current.some((prop) => prop.id === changed.id);
+              return exists
+                ? current.map((prop) => (prop.id === changed.id ? changed : prop))
+                : [...current, changed];
+            });
+          },
+        )
+        .subscribe((status, error) => {
+          if (!active || currentChannel !== channel) return;
+          if (status === "SUBSCRIBED") {
+            reconnectAttempts = 0;
+            setRealtimeStatus("connected");
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            if (error) console.error("Conexão Realtime interrompida:", error);
+            scheduleReconnect(channel);
           }
-          const changed = payload.new as SceneProp;
-          if (!changed?.id) return;
-          setProps((current) => {
-            const exists = current.some((prop) => prop.id === changed.id);
-            return exists
-              ? current.map((prop) => (prop.id === changed.id ? changed : prop))
-              : [...current, changed];
-          });
-        },
-      );
+        });
+    }
 
-    void supabase.realtime.setAuth().then(() => channel.subscribe());
+    const { data: authSubscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (active && session?.access_token) void supabase.realtime.setAuth(session.access_token);
+    });
+    void connect();
     return () => {
       active = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      authSubscription.subscription.unsubscribe();
       channelRef.current = null;
-      void supabase.removeChannel(channel);
+      if (currentChannel) void supabase.removeChannel(currentChannel);
     };
   }, [scene, supabase]);
 
@@ -230,6 +282,10 @@ export function TableWorkspace({
     <div className="flex min-h-0 flex-1">
       <TableSidebar campaignId={campaignId} scenes={scenes} assets={assets} canManage={canManage} />
       <section className="relative min-w-0 flex-1">
+        <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-[11px] text-ink-muted backdrop-blur-sm">
+          <span className={`h-1.5 w-1.5 rounded-full ${realtimeStatus === "connected" ? "bg-emerald-400" : realtimeStatus === "offline" ? "bg-red-400" : "bg-amber-400"}`} />
+          {realtimeStatus === "connected" ? "Tempo real conectado" : realtimeStatus === "offline" ? "Tempo real offline" : "Reconectando…"}
+        </div>
         <TableCanvas
           scene={scene}
           props={props}
