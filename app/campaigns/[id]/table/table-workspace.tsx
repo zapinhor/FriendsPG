@@ -53,6 +53,12 @@ type ScenePropUpdate = Partial<
 
 type RealtimeStatus = "connecting" | "connected" | "reconnecting" | "offline";
 
+function upsertProp(current: SceneProp[], changed: SceneProp) {
+  const index = current.findIndex((prop) => prop.id === changed.id);
+  if (index === -1) return [...current, changed];
+  return current.map((prop, propIndex) => (propIndex === index ? changed : prop));
+}
+
 export function TableWorkspace({
   campaignId,
   userId,
@@ -79,6 +85,22 @@ export function TableWorkspace({
     let currentChannel: RealtimeChannel | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectAttempts = 0;
+
+    async function syncSceneProps() {
+      const { data, error } = await supabase
+        .from("scene_props")
+        .select("*")
+        .eq("scene_id", activeScene.id)
+        .order("z_index", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (!active) return;
+      if (error) {
+        console.error("Não foi possível sincronizar os objetos da cena:", error);
+        return;
+      }
+      setProps(data ?? []);
+      setSelectedId((current) => current && data?.some((prop) => prop.id === current) ? current : null);
+    }
 
     function receiveTransform(payload: Record<string, unknown>) {
       if (
@@ -131,24 +153,35 @@ export function TableWorkspace({
       channelRef.current = channel;
       channel
         .on("broadcast", { event: "prop-move" }, ({ payload }) => receiveTransform(payload))
+        .on("broadcast", { event: "prop-upsert" }, ({ payload }) => {
+          if (payload.clientId === clientIdRef.current) return;
+          const changed = payload.prop as SceneProp | undefined;
+          if (!changed?.id || changed.scene_id !== activeScene.id) return;
+          setProps((current) => upsertProp(current, changed));
+        })
+        .on("broadcast", { event: "prop-delete" }, ({ payload }) => {
+          if (payload.clientId === clientIdRef.current || typeof payload.propId !== "string") return;
+          setProps((current) => current.filter((prop) => prop.id !== payload.propId));
+          setSelectedId((current) => current === payload.propId ? null : current);
+        })
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "scene_props", filter: `scene_id=eq.${activeScene.id}` },
+          { event: "INSERT", schema: "public", table: "scene_props", filter: `scene_id=eq.${activeScene.id}` },
           (payload) => {
             if (!active) return;
-            if (payload.eventType === "DELETE") {
-              const deletedId = (payload.old as { id?: string }).id;
-              if (deletedId) setProps((current) => current.filter((prop) => prop.id !== deletedId));
-              return;
-            }
             const changed = payload.new as SceneProp;
             if (!changed?.id) return;
-            setProps((current) => {
-              const exists = current.some((prop) => prop.id === changed.id);
-              return exists
-                ? current.map((prop) => (prop.id === changed.id ? changed : prop))
-                : [...current, changed];
-            });
+            setProps((current) => upsertProp(current, changed));
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "scene_props", filter: `scene_id=eq.${activeScene.id}` },
+          (payload) => {
+            if (!active) return;
+            const changed = payload.new as SceneProp;
+            if (!changed?.id) return;
+            setProps((current) => upsertProp(current, changed));
           },
         )
         .on(
@@ -166,6 +199,7 @@ export function TableWorkspace({
           if (status === "SUBSCRIBED") {
             reconnectAttempts = 0;
             setRealtimeStatus("connected");
+            void syncSceneProps();
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
             if (error) console.error("Conexão Realtime interrompida:", error);
             scheduleReconnect(channel);
@@ -223,8 +257,13 @@ export function TableWorkspace({
       window.alert("Não foi possível adicionar o objeto à cena.");
       return;
     }
-    setProps((current) => [...current, data]);
+    setProps((current) => upsertProp(current, data));
     setSelectedId(data.id);
+    void channelRef.current?.send({
+      type: "broadcast",
+      event: "prop-upsert",
+      payload: { prop: data, clientId: clientIdRef.current },
+    });
   }
 
   async function updateProp(id: string, patch: ScenePropUpdate) {
@@ -275,8 +314,13 @@ export function TableWorkspace({
       console.error("Não foi possível duplicar o prop:", error);
       return;
     }
-    setProps((current) => [...current, data]);
+    setProps((current) => upsertProp(current, data));
     setSelectedId(data.id);
+    void channelRef.current?.send({
+      type: "broadcast",
+      event: "prop-upsert",
+      payload: { prop: data, clientId: clientIdRef.current },
+    });
   }
 
   async function deleteProp(prop: SceneProp) {
@@ -288,6 +332,11 @@ export function TableWorkspace({
     }
     setProps((current) => current.filter((item) => item.id !== prop.id));
     setSelectedId(null);
+    void channelRef.current?.send({
+      type: "broadcast",
+      event: "prop-delete",
+      payload: { propId: prop.id, clientId: clientIdRef.current },
+    });
   }
 
   return (

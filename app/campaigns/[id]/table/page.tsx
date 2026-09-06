@@ -219,6 +219,7 @@ export default async function TablePage({
       </header>
 
       <TableWorkspace
+          key={resolvedActiveScene?.id ?? "empty-scene"}
           campaignId={campaign.id}
           userId={user.id}
           scene={resolvedActiveScene}
