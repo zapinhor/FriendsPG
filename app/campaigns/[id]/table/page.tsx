@@ -2,8 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { CampaignRole } from "@/types/entities";
-import { TableCanvas } from "./table-canvas";
-import { TableSidebar } from "./table-sidebar";
+import { TableWorkspace } from "./table-workspace";
 
 export default async function TablePage({
   params,
@@ -187,6 +186,15 @@ export default async function TablePage({
       ? [activeScene]
       : [];
 
+  const { data: sceneProps } = activeScene
+    ? await supabase
+        .from("scene_props")
+        .select("*")
+        .eq("scene_id", activeScene.id)
+        .order("z_index", { ascending: true })
+        .order("created_at", { ascending: true })
+    : { data: [] };
+
   return (
     <main className="flex min-h-screen flex-col bg-[#0c0d12]">
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 px-6">
@@ -210,9 +218,10 @@ export default async function TablePage({
         </span>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <TableSidebar
+      <TableWorkspace
           campaignId={campaign.id}
+          userId={user.id}
+          scene={resolvedActiveScene}
           scenes={visibleScenes.map(
             (scene) => ({
               id: scene.id,
@@ -222,15 +231,9 @@ export default async function TablePage({
             }),
           )}
           assets={assetsWithPreview}
+          initialProps={sceneProps ?? []}
           canManage={canManage}
-        />
-
-        <section className="relative min-w-0 flex-1">
-          <TableCanvas
-            scene={resolvedActiveScene}
-          />
-        </section>
-      </div>
+      />
     </main>
   );
 }

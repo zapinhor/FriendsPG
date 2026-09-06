@@ -2,5 +2,7 @@ node_modules
 .next
 .env.local
 tsconfig.tsbuildinfo
-/{app/
+/public/maps/
+/upabasemigrations
+/supabase/.temp/
 .DS_Store

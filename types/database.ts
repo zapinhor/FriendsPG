@@ -255,6 +255,96 @@ export interface Database {
           },
         ];
       };
+
+      scene_props: {
+        Row: {
+          id: string;
+          scene_id: string;
+          campaign_id: string;
+          asset_id: string;
+          name: string;
+          image_url: string;
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          rotation: number;
+          flip_horizontal: boolean;
+          flip_vertical: boolean;
+          z_index: number;
+          is_locked: boolean;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          scene_id: string;
+          campaign_id: string;
+          asset_id: string;
+          name: string;
+          image_url: string;
+          x?: number;
+          y?: number;
+          width?: number;
+          height?: number;
+          rotation?: number;
+          flip_horizontal?: boolean;
+          flip_vertical?: boolean;
+          z_index?: number;
+          is_locked?: boolean;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          scene_id?: string;
+          campaign_id?: string;
+          asset_id?: string;
+          name?: string;
+          image_url?: string;
+          x?: number;
+          y?: number;
+          width?: number;
+          height?: number;
+          rotation?: number;
+          flip_horizontal?: boolean;
+          flip_vertical?: boolean;
+          z_index?: number;
+          is_locked?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "scene_props_scene_id_fkey";
+            columns: ["scene_id"];
+            isOneToOne: false;
+            referencedRelation: "scenes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "scene_props_campaign_id_fkey";
+            columns: ["campaign_id"];
+            isOneToOne: false;
+            referencedRelation: "campaigns";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "scene_props_asset_id_fkey";
+            columns: ["asset_id"];
+            isOneToOne: false;
+            referencedRelation: "assets";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "scene_props_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
 
     Views: {
