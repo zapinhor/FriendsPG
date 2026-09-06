@@ -85,8 +85,12 @@ export function TableWorkspace({
           !Number.isFinite(payload.x) ||
           !Number.isFinite(payload.y)
         ) return;
+        const width = typeof payload.width === "number" && Number.isFinite(payload.width) ? payload.width : undefined;
+        const height = typeof payload.height === "number" && Number.isFinite(payload.height) ? payload.height : undefined;
         setProps((current) => current.map((prop) => (
-          prop.id === payload.propId ? { ...prop, x: payload.x, y: payload.y } : prop
+          prop.id === payload.propId
+            ? { ...prop, x: payload.x, y: payload.y, ...(width ? { width } : {}), ...(height ? { height } : {}) }
+            : prop
         )));
       })
       .on(
@@ -118,12 +122,15 @@ export function TableWorkspace({
     };
   }, [scene, supabase]);
 
-  function previewMove(id: string, x: number, y: number) {
+  function previewTransform(
+    id: string,
+    patch: Partial<Pick<SceneProp, "x" | "y" | "width" | "height">>,
+  ) {
     if (!canManage) return;
     void channelRef.current?.send({
       type: "broadcast",
       event: "prop-move",
-      payload: { propId: id, x, y, clientId: clientIdRef.current },
+      payload: { propId: id, ...patch, clientId: clientIdRef.current },
     });
   }
 
@@ -229,8 +236,8 @@ export function TableWorkspace({
           canManage={canManage}
           selectedPropId={selectedId}
           onSelectProp={setSelectedId}
-          onPreviewMove={previewMove}
-          onMoveProp={(id, x, y) => updateProp(id, { x, y })}
+          onPreviewTransform={previewTransform}
+          onTransformProp={updateProp}
         />
       </section>
       {canManage && (
