@@ -30,6 +30,7 @@ const MAX_ZOOM = 3;
 const ZOOM_SPEED = 0.0015;
 const FIT_PADDING = 80;
 const MIN_PROP_SIZE = 24;
+const MAX_PROP_SIZE = 10000;
 const HANDLE_SIZE = 12;
 const HANDLE_DIRECTIONS: HandleDirection[] = [
   { x: -1, y: -1, cursor: "nwse-resize" }, { x: 0, y: -1, cursor: "ns-resize" },
@@ -271,8 +272,25 @@ export function TableCanvas({ scene, props, canManage, selectedPropId, onSelectP
                 const localDy = globalDx * sin + globalDy * cos;
                 const widthDelta = direction.x === 0 ? 0 : localDx * direction.x;
                 const heightDelta = direction.y === 0 ? 0 : localDy * direction.y;
-                const width = Math.max(MIN_PROP_SIZE, startProp.width + widthDelta);
-                const height = Math.max(MIN_PROP_SIZE, startProp.height + heightDelta);
+                let width = Math.min(MAX_PROP_SIZE, Math.max(MIN_PROP_SIZE, startProp.width + widthDelta));
+                let height = Math.min(MAX_PROP_SIZE, Math.max(MIN_PROP_SIZE, startProp.height + heightDelta));
+
+                if (event.shiftKey) {
+                  const widthScale = 1 + widthDelta / startProp.width;
+                  const heightScale = 1 + heightDelta / startProp.height;
+                  const requestedScale = direction.x === 0
+                    ? heightScale
+                    : direction.y === 0
+                      ? widthScale
+                      : Math.abs(widthScale - 1) >= Math.abs(heightScale - 1)
+                        ? widthScale
+                        : heightScale;
+                  const minimumScale = Math.max(MIN_PROP_SIZE / startProp.width, MIN_PROP_SIZE / startProp.height);
+                  const maximumScale = Math.min(MAX_PROP_SIZE / startProp.width, MAX_PROP_SIZE / startProp.height);
+                  const proportionalScale = Math.min(maximumScale, Math.max(minimumScale, requestedScale));
+                  width = startProp.width * proportionalScale;
+                  height = startProp.height * proportionalScale;
+                }
                 const effectiveDx = direction.x === 0 ? 0 : (width - startProp.width) * direction.x / 2;
                 const effectiveDy = direction.y === 0 ? 0 : (height - startProp.height) * direction.y / 2;
                 const angle = startProp.rotation * Math.PI / 180;
