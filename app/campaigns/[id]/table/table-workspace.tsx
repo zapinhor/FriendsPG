@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { SceneProp } from "@/types/entities";
 import { PropPanel } from "./prop-panel";
@@ -61,6 +62,7 @@ export function TableWorkspace({
   initialProps,
   canManage,
 }: TableWorkspaceProps) {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [props, setProps] = useState(initialProps);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -149,6 +151,16 @@ export function TableWorkspace({
             });
           },
         )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "scenes", filter: `campaign_id=eq.${campaignId}` },
+          (payload) => {
+            const changedScene = payload.new as { id?: string; is_active?: boolean };
+            if (active && changedScene.is_active && changedScene.id !== activeScene.id) {
+              router.refresh();
+            }
+          },
+        )
         .subscribe((status, error) => {
           if (!active || currentChannel !== channel) return;
           if (status === "SUBSCRIBED") {
@@ -172,7 +184,7 @@ export function TableWorkspace({
       channelRef.current = null;
       if (currentChannel) void supabase.removeChannel(currentChannel);
     };
-  }, [scene, supabase]);
+  }, [campaignId, router, scene, supabase]);
 
   function previewTransform(
     id: string,
