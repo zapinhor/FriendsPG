@@ -47,6 +47,12 @@ export function AssetManager({
   const [creating, setCreating] = useState(false);
   const [deletingAssetId, setDeletingAssetId] =
     useState<string | null>(null);
+  const [editingAssetId, setEditingAssetId] =
+    useState<string | null>(null);
+  const [replacementUrl, setReplacementUrl] =
+    useState("");
+  const [replacingUrl, setReplacingUrl] =
+    useState(false);
 
   const [error, setError] = useState<string | null>(
     null,
@@ -172,6 +178,39 @@ export function AssetManager({
     router.refresh();
   }
 
+  async function replaceAssetUrl(
+    event: FormEvent<HTMLFormElement>,
+    asset: Asset,
+  ) {
+    event.preventDefault();
+    if (!canManage) return;
+
+    const trimmedUrl = replacementUrl.trim();
+    if (!isValidExternalUrl(trimmedUrl)) {
+      setError("Informe uma URL válida começando com http:// ou https://.");
+      return;
+    }
+
+    setReplacingUrl(true);
+    setError(null);
+    const { error: rpcError } = await supabase.rpc("replace_asset_external_url", {
+      target_campaign_id: campaignId,
+      target_asset_id: asset.id,
+      replacement_url: trimmedUrl,
+    });
+    setReplacingUrl(false);
+
+    if (rpcError) {
+      console.error(rpcError);
+      setError("Não foi possível atualizar a URL do asset.");
+      return;
+    }
+
+    setEditingAssetId(null);
+    setReplacementUrl("");
+    router.refresh();
+  }
+
   return (
     <div className="p-4">
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -217,7 +256,7 @@ export function AssetManager({
               }
               placeholder="Ex.: Mapa da floresta"
               required
-              className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/30"
+              className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/70"
             />
           </div>
 
@@ -234,7 +273,7 @@ export function AssetManager({
               }
               placeholder="https://..."
               required
-              className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/30"
+              className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/70"
             />
           </div>
 
@@ -338,20 +377,70 @@ export function AssetManager({
                 )}
 
                 {canManage && (
-                  <button
-                    type="button"
-                    disabled={
-                      deletingAssetId !== null
-                    }
-                    onClick={() =>
-                      deleteAsset(asset)
-                    }
-                    className="mt-2 text-[11px] text-red-400 hover:text-red-300 disabled:opacity-40"
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    <button
+                      type="button"
+                      disabled={deletingAssetId !== null || replacingUrl}
+                      onClick={() => {
+                        setEditingAssetId(asset.id);
+                        setReplacementUrl(asset.url ?? "");
+                        setError(null);
+                      }}
+                      className="text-[11px] text-ink-muted hover:text-white disabled:opacity-40"
+                    >
+                      Atualizar URL
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deletingAssetId !== null || replacingUrl}
+                      onClick={() => deleteAsset(asset)}
+                      className="text-[11px] text-red-400 hover:text-red-300 disabled:opacity-40"
+                    >
+                      {deletingAssetId === asset.id ? "Excluindo..." : "Excluir"}
+                    </button>
+                  </div>
+                )}
+
+                {canManage && editingAssetId === asset.id && (
+                  <form
+                    onSubmit={(event) => replaceAssetUrl(event, asset)}
+                    className="mt-3 space-y-2 border-t border-white/10 pt-3"
                   >
-                    {deletingAssetId === asset.id
-                      ? "Excluindo..."
-                      : "Excluir"}
-                  </button>
+                    <label className="block text-[11px] text-ink-muted">
+                      Nova URL da imagem
+                    </label>
+                    <input
+                      type="url"
+                      value={replacementUrl}
+                      onChange={(event) => setReplacementUrl(event.target.value)}
+                      placeholder="https://..."
+                      required
+                      className="w-full rounded border border-white/10 bg-black/20 px-2 py-1.5 text-[11px] outline-none focus:border-white/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/70"
+                    />
+                    <p className="text-[10px] leading-relaxed text-ink-muted">
+                      Os objetos já colocados na mesa serão atualizados automaticamente, sem mudar posição ou tamanho.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        disabled={replacingUrl}
+                        className="rounded bg-white px-2 py-1 text-[11px] text-black disabled:opacity-50"
+                      >
+                        {replacingUrl ? "Atualizando..." : "Salvar URL"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={replacingUrl}
+                        onClick={() => {
+                          setEditingAssetId(null);
+                          setReplacementUrl("");
+                        }}
+                        className="text-[11px] text-ink-muted hover:text-white"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
                 )}
               </div>
             </div>

@@ -412,6 +412,14 @@ export interface Database {
         };
         Returns: undefined;
       };
+      replace_asset_external_url: {
+        Args: {
+          target_campaign_id: string;
+          target_asset_id: string;
+          replacement_url: string;
+        };
+        Returns: number;
+      };
       get_scene_background_url: {
   Args: {
     target_scene_id: string;
