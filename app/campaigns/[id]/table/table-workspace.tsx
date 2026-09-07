@@ -33,6 +33,7 @@ type TableWorkspaceProps = {
   assets: Asset[];
   initialProps: SceneProp[];
   canManage: boolean;
+  canMoveProps: boolean;
 };
 
 type ScenePropUpdate = Partial<
@@ -67,6 +68,7 @@ export function TableWorkspace({
   assets,
   initialProps,
   canManage,
+  canMoveProps,
 }: TableWorkspaceProps) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -267,7 +269,8 @@ export function TableWorkspace({
   }
 
   async function updateProp(id: string, patch: ScenePropUpdate) {
-    if (!canManage) return;
+    const isMoveOnly = Object.keys(patch).every((key) => key === "x" || key === "y");
+    if (!canManage && (!canMoveProps || !isMoveOnly)) return;
     const previous = props;
     setProps((current) => current.map((prop) => (prop.id === id ? { ...prop, ...patch } : prop)));
     const { data, error } = await supabase
@@ -351,6 +354,7 @@ export function TableWorkspace({
           scene={scene}
           props={props}
           canManage={canManage}
+          canMoveProps={canMoveProps}
           selectedPropId={selectedId}
           onSelectProp={setSelectedId}
           onPreviewTransform={previewTransform}

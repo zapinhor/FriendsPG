@@ -10,6 +10,7 @@ type TableCanvasProps = {
   scene: Scene | null;
   props: SceneProp[];
   canManage: boolean;
+  canMoveProps: boolean;
   selectedPropId: string | null;
   onSelectProp: (id: string | null) => void;
   onPreviewTransform: (id: string, patch: TransformPatch) => void;
@@ -46,7 +47,7 @@ function positionHandle(view: PropView, handle: PropView["handles"][number]) {
   );
 }
 
-function renderPropView(view: PropView, selected: boolean, canManage: boolean) {
+function renderPropView(view: PropView, selected: boolean, canManage: boolean, canMoveProps: boolean) {
   const { prop, container, sprite, outline, handles } = view;
   container.position.set(prop.x, prop.y);
   container.rotation = prop.rotation * Math.PI / 180;
@@ -54,8 +55,8 @@ function renderPropView(view: PropView, selected: boolean, canManage: boolean) {
   sprite.height = prop.height;
   sprite.scale.x = Math.abs(sprite.scale.x) * (prop.flip_horizontal ? -1 : 1);
   sprite.scale.y = Math.abs(sprite.scale.y) * (prop.flip_vertical ? -1 : 1);
-  sprite.eventMode = canManage && !prop.is_locked ? "static" : "none";
-  sprite.cursor = canManage && !prop.is_locked ? "move" : "default";
+  sprite.eventMode = canMoveProps && !prop.is_locked ? "static" : "none";
+  sprite.cursor = canMoveProps && !prop.is_locked ? "move" : "default";
   outline.clear().rect(-prop.width / 2, -prop.height / 2, prop.width, prop.height).stroke({ color: 0x9eb7ff, width: 3 });
   outline.visible = selected;
   for (const handle of handles) {
@@ -65,7 +66,7 @@ function renderPropView(view: PropView, selected: boolean, canManage: boolean) {
   }
 }
 
-export function TableCanvas({ scene, props, canManage, selectedPropId, onSelectProp, onPreviewTransform, onTransformProp }: TableCanvasProps) {
+export function TableCanvas({ scene, props, canManage, canMoveProps, selectedPropId, onSelectProp, onPreviewTransform, onTransformProp }: TableCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const worldRef = useRef<Container | null>(null);
@@ -224,9 +225,9 @@ export function TableCanvas({ scene, props, canManage, selectedPropId, onSelectP
               if (!current) return;
               const local = propWorld.toLocal(event.global);
               current.prop = { ...current.prop, x: local.x - offsetX, y: local.y - offsetY };
-              renderPropView(current, true, canManage);
+              renderPropView(current, true, canManage, canMoveProps);
               const now = performance.now();
-              if (now - lastPreviewAt >= 33) { lastPreviewAt = now; callbacksRef.current.onPreviewTransform(prop.id, { x: current.prop.x, y: current.prop.y }); }
+              if (canManage && now - lastPreviewAt >= 33) { lastPreviewAt = now; callbacksRef.current.onPreviewTransform(prop.id, { x: current.prop.x, y: current.prop.y }); }
             });
             const finishDrag = () => {
               if (!dragging) return;
@@ -297,7 +298,7 @@ export function TableCanvas({ scene, props, canManage, selectedPropId, onSelectP
                 const centerDx = effectiveDx * Math.cos(angle) - effectiveDy * Math.sin(angle);
                 const centerDy = effectiveDx * Math.sin(angle) + effectiveDy * Math.cos(angle);
                 current.prop = { ...current.prop, x: startProp.x + centerDx, y: startProp.y + centerDy, width, height };
-                renderPropView(current, true, canManage);
+                renderPropView(current, true, canManage, canMoveProps);
                 const now = performance.now();
                 if (now - lastResizePreviewAt >= 33) {
                   lastResizePreviewAt = now;
@@ -318,13 +319,13 @@ export function TableCanvas({ scene, props, canManage, selectedPropId, onSelectP
           } catch (error) { console.error(`Não foi possível carregar o prop ${prop.name}:`, error); continue; }
         }
         view.prop = prop;
-        renderPropView(view, selectedPropId === prop.id, canManage);
+        renderPropView(view, selectedPropId === prop.id, canManage, canMoveProps);
         propWorld.setChildIndex(view.container, propWorld.children.length - 1);
       }
     }
     void addMissing();
     return () => { cancelled = true; };
-  }, [props, selectedPropId, canManage, canvasVersion]);
+  }, [props, selectedPropId, canManage, canMoveProps, canvasVersion]);
 
   return <div ref={hostRef} className="absolute inset-0 overflow-hidden" />;
 }

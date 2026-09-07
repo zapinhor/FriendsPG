@@ -6,6 +6,7 @@ import type { CampaignRole, Profile } from "@/types/entities";
 import { CreateInvite } from "./create-invite";
 import { LeaveCampaign } from "./leave-campaign";
 import { MemberActions } from "./member-actions";
+import { TablePermissions } from "./table-permissions";
 
 export default async function CampaignPage({
   params,
@@ -40,6 +41,8 @@ export default async function CampaignPage({
 
   const myRole = myMembership?.role as CampaignRole | undefined;
   const isAdmin = myRole === "owner" || myRole === "gm";
+  const campaignSettings = campaign.settings as Record<string, unknown>;
+  const allowPlayerPropMovement = campaignSettings.allow_player_prop_movement === true;
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
@@ -106,6 +109,14 @@ export default async function CampaignPage({
             <CreateInvite campaignId={campaign.id} />
           </div>
         </section>
+      )}
+
+      {isAdmin && (
+        <TablePermissions
+          campaignId={campaign.id}
+          canEdit={myRole === "owner"}
+          allowPlayerPropMovement={allowPlayerPropMovement}
+        />
       )}
 
       <section className="panel mt-6 p-6">

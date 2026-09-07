@@ -23,7 +23,7 @@ export default async function TablePage({
 
   const { data: campaign } = await supabase
     .from("campaigns")
-    .select("id, name")
+    .select("id, name, settings")
     .eq("id", id)
     .maybeSingle();
 
@@ -44,6 +44,10 @@ export default async function TablePage({
   const canManage =
     myRole === "owner" ||
     myRole === "gm";
+  const campaignSettings = campaign.settings as Record<string, unknown>;
+  const canMoveProps =
+    canManage ||
+    (myRole === "player" && campaignSettings.allow_player_prop_movement === true);
 
   const { data: scenes } = await supabase
     .from("scenes")
@@ -234,6 +238,7 @@ export default async function TablePage({
           assets={assetsWithPreview}
           initialProps={sceneProps ?? []}
           canManage={canManage}
+          canMoveProps={canMoveProps}
       />
     </main>
   );

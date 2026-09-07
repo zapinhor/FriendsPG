@@ -405,6 +405,13 @@ export interface Database {
         };
         Returns: undefined;
       };
+      set_campaign_table_permissions: {
+        Args: {
+          target_campaign_id: string;
+          allow_player_prop_movement: boolean;
+        };
+        Returns: undefined;
+      };
       get_scene_background_url: {
   Args: {
     target_scene_id: string;
