@@ -76,3 +76,34 @@ export interface SceneProp {
   created_at: string;
   updated_at: string;
 }
+
+export interface Character {
+  id: string;
+  campaign_id: string;
+  name: string;
+  image_url: string;
+  controlled_by: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SceneToken {
+  id: string;
+  scene_id: string;
+  campaign_id: string;
+  character_id: string;
+  name: string;
+  image_url: string;
+  controlled_by: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  z_index: number;
+  is_locked: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}

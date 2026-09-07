@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { SceneProp } from "@/types/entities";
+import type { Character, SceneProp, SceneToken } from "@/types/entities";
 import { PropPanel } from "./prop-panel";
-import { TableCanvas } from "./table-canvas";
+import { TableCanvas, type CanvasItem } from "./table-canvas";
 import { TableSidebar } from "./table-sidebar";
+import { TokenPanel } from "./token-panel";
 
 type Scene = {
   id: string;
@@ -32,6 +33,9 @@ type TableWorkspaceProps = {
   scenes: { id: string; name: string; is_active: boolean }[];
   assets: Asset[];
   initialProps: SceneProp[];
+  initialTokens: SceneToken[];
+  characters: Character[];
+  members: { user_id: string; display_name: string }[];
   canManage: boolean;
   canMoveProps: boolean;
 };
@@ -60,6 +64,12 @@ function upsertProp(current: SceneProp[], changed: SceneProp) {
   return current.map((prop, propIndex) => (propIndex === index ? changed : prop));
 }
 
+function upsertToken(current: SceneToken[], changed: SceneToken) {
+  return current.some((token) => token.id === changed.id)
+    ? current.map((token) => token.id === changed.id ? changed : token)
+    : [...current, changed];
+}
+
 export function TableWorkspace({
   campaignId,
   userId,
@@ -67,18 +77,31 @@ export function TableWorkspace({
   scenes,
   assets,
   initialProps,
+  initialTokens,
+  characters,
+  members,
   canManage,
   canMoveProps,
 }: TableWorkspaceProps) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [props, setProps] = useState(initialProps);
+  const [tokens, setTokens] = useState(initialTokens);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>(scene ? "connecting" : "offline");
   const channelRef = useRef<RealtimeChannel | null>(null);
   const clientIdRef = useRef(crypto.randomUUID());
   const selectedProp = props.find((prop) => prop.id === selectedId) ?? null;
+  const selectedToken = tokens.find((token) => token.id === selectedId) ?? null;
+  const canvasItems: CanvasItem[] = [
+    ...props.map((prop) => ({ ...prop, canMove: canManage || canMoveProps, canResize: canManage })),
+    ...tokens.map((token) => ({
+      ...token,
+      canMove: canManage || token.controlled_by === userId,
+      canResize: canManage,
+    })),
+  ];
 
   useEffect(() => {
     if (!scene) return;
@@ -89,19 +112,19 @@ export function TableWorkspace({
     let reconnectAttempts = 0;
 
     async function syncSceneProps() {
-      const { data, error } = await supabase
-        .from("scene_props")
-        .select("*")
-        .eq("scene_id", activeScene.id)
-        .order("z_index", { ascending: true })
-        .order("created_at", { ascending: true });
+      const [{ data, error }, { data: tokenData, error: tokenError }] = await Promise.all([
+        supabase.from("scene_props").select("*").eq("scene_id", activeScene.id).order("z_index").order("created_at"),
+        supabase.from("scene_tokens").select("*").eq("scene_id", activeScene.id).order("z_index").order("created_at"),
+      ]);
       if (!active) return;
       if (error) {
         console.error("Não foi possível sincronizar os objetos da cena:", error);
         return;
       }
       setProps(data ?? []);
-      setSelectedId((current) => current && data?.some((prop) => prop.id === current) ? current : null);
+      if (!tokenError) setTokens(tokenData ?? []);
+      else console.error("Não foi possível sincronizar os tokens:", tokenError);
+      setSelectedId((current) => current && (data?.some((prop) => prop.id === current) || tokenData?.some((token) => token.id === current)) ? current : null);
     }
 
     function receiveTransform(payload: Record<string, unknown>) {
@@ -119,6 +142,11 @@ export function TableWorkspace({
         prop.id === payload.propId
           ? { ...prop, x: payload.x as number, y: payload.y as number, ...(width ? { width } : {}), ...(height ? { height } : {}) }
           : prop
+      )));
+      setTokens((current) => current.map((token) => (
+        token.id === payload.propId
+          ? { ...token, x: payload.x as number, y: payload.y as number, ...(width ? { width } : {}), ...(height ? { height } : {}) }
+          : token
       )));
     }
 
@@ -178,6 +206,32 @@ export function TableWorkspace({
         )
         .on(
           "postgres_changes",
+          { event: "DELETE", schema: "public", table: "scene_tokens", filter: `scene_id=eq.${activeScene.id}` },
+          (payload) => {
+            const deletedId = (payload.old as { id?: string }).id;
+            if (!active || !deletedId) return;
+            setTokens((current) => current.filter((token) => token.id !== deletedId));
+            setSelectedId((current) => current === deletedId ? null : current);
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "scene_tokens", filter: `scene_id=eq.${activeScene.id}` },
+          (payload) => {
+            const changed = payload.new as SceneToken;
+            if (active && changed?.id) setTokens((current) => upsertToken(current, changed));
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "scene_tokens", filter: `scene_id=eq.${activeScene.id}` },
+          (payload) => {
+            const changed = payload.new as SceneToken;
+            if (active && changed?.id) setTokens((current) => upsertToken(current, changed));
+          },
+        )
+        .on(
+          "postgres_changes",
           { event: "UPDATE", schema: "public", table: "scene_props", filter: `scene_id=eq.${activeScene.id}` },
           (payload) => {
             if (!active) return;
@@ -226,7 +280,12 @@ export function TableWorkspace({
     id: string,
     patch: Partial<Pick<SceneProp, "x" | "y" | "width" | "height">>,
   ) {
-    if (!canManage) return;
+    const token = tokens.find((item) => item.id === id);
+    const prop = props.find((item) => item.id === id);
+    const canPreview = canManage
+      || Boolean(token && token.controlled_by === userId && !token.is_locked)
+      || Boolean(prop && canMoveProps && !prop.is_locked);
+    if (!canPreview) return;
     void channelRef.current?.send({
       type: "broadcast",
       event: "prop-move",
@@ -269,6 +328,25 @@ export function TableWorkspace({
   }
 
   async function updateProp(id: string, patch: ScenePropUpdate) {
+    const token = tokens.find((item) => item.id === id);
+    if (token) {
+      const isMoveOnly = Object.keys(patch).every((key) => key === "x" || key === "y");
+      if (!canManage && (token.controlled_by !== userId || !isMoveOnly)) return;
+      const tokenPatch: Partial<Pick<SceneToken, "x" | "y" | "width" | "height" | "rotation" | "z_index" | "is_locked">> = {};
+      if (patch.x !== undefined) tokenPatch.x = patch.x;
+      if (patch.y !== undefined) tokenPatch.y = patch.y;
+      if (patch.width !== undefined) tokenPatch.width = patch.width;
+      if (patch.height !== undefined) tokenPatch.height = patch.height;
+      if (patch.rotation !== undefined) tokenPatch.rotation = patch.rotation;
+      if (patch.z_index !== undefined) tokenPatch.z_index = patch.z_index;
+      if (patch.is_locked !== undefined) tokenPatch.is_locked = patch.is_locked;
+      const previousTokens = tokens;
+      setTokens((current) => current.map((item) => item.id === id ? { ...item, ...tokenPatch } : item));
+      const { data, error } = await supabase.from("scene_tokens").update(tokenPatch).eq("id", id).eq("campaign_id", campaignId).select().single();
+      if (error) { console.error("Não foi possível atualizar o token:", error); setTokens(previousTokens); return; }
+      setTokens((current) => upsertToken(current, data));
+      return;
+    }
     const isMoveOnly = Object.keys(patch).every((key) => key === "x" || key === "y");
     if (!canManage && (!canMoveProps || !isMoveOnly)) return;
     const previous = props;
@@ -342,9 +420,31 @@ export function TableWorkspace({
     });
   }
 
+  async function deleteToken(token: SceneToken) {
+    if (!canManage || !window.confirm(`Excluir o token "${token.name}" desta cena?`)) return;
+    const { error } = await supabase.from("scene_tokens").delete().eq("id", token.id).eq("campaign_id", campaignId);
+    if (error) { console.error("Não foi possível excluir o token:", error); return; }
+    setTokens((current) => current.filter((item) => item.id !== token.id));
+    setSelectedId(null);
+  }
+
   return (
     <div className="flex min-h-0 flex-1">
-      <TableSidebar campaignId={campaignId} scenes={scenes} assets={assets} canManage={canManage} />
+      <TableSidebar
+        campaignId={campaignId}
+        userId={userId}
+        scene={scene}
+        scenes={scenes}
+        assets={assets}
+        characters={characters}
+        members={members}
+        tokens={tokens}
+        onTokenCreated={(token) => {
+          setTokens((current) => upsertToken(current, token));
+          setSelectedId(token.id);
+        }}
+        canManage={canManage}
+      />
       <section className="relative min-w-0 flex-1">
         <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-[11px] text-ink-muted backdrop-blur-sm">
           <span className={`h-1.5 w-1.5 rounded-full ${realtimeStatus === "connected" ? "bg-emerald-400" : realtimeStatus === "offline" ? "bg-red-400" : "bg-amber-400"}`} />
@@ -352,16 +452,21 @@ export function TableWorkspace({
         </div>
         <TableCanvas
           scene={scene}
-          props={props}
-          canManage={canManage}
-          canMoveProps={canMoveProps}
+          items={canvasItems}
           selectedPropId={selectedId}
           onSelectProp={setSelectedId}
           onPreviewTransform={previewTransform}
           onTransformProp={updateProp}
         />
       </section>
-      {canManage && (
+      {canManage && selectedToken ? (
+        <TokenPanel
+          key={`${selectedToken.id}:${selectedToken.updated_at}`}
+          token={selectedToken}
+          onUpdate={(patch) => updateProp(selectedToken.id, patch)}
+          onDelete={() => deleteToken(selectedToken)}
+        />
+      ) : canManage && (
         <PropPanel
           assets={assets}
           props={[...props].sort((a, b) => b.z_index - a.z_index)}

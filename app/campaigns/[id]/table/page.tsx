@@ -199,6 +199,21 @@ export default async function TablePage({
         .order("created_at", { ascending: true })
     : { data: [] };
 
+  const [{ data: characters }, { data: memberRows }, { data: sceneTokens }] = await Promise.all([
+    supabase.from("characters").select("*").eq("campaign_id", id).order("created_at"),
+    canManage
+      ? supabase.from("campaign_members").select("user_id, profiles(display_name)").eq("campaign_id", id).order("joined_at")
+      : Promise.resolve({ data: [] }),
+    activeScene
+      ? supabase.from("scene_tokens").select("*").eq("scene_id", activeScene.id).order("z_index").order("created_at")
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const controllerOptions = (memberRows ?? []).map((member) => ({
+    user_id: member.user_id,
+    display_name: (member.profiles as unknown as { display_name: string }).display_name,
+  }));
+
   return (
     <main className="flex min-h-screen flex-col bg-[#0c0d12]">
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 px-6">
@@ -237,6 +252,9 @@ export default async function TablePage({
           )}
           assets={assetsWithPreview}
           initialProps={sceneProps ?? []}
+          initialTokens={sceneTokens ?? []}
+          characters={characters ?? []}
+          members={controllerOptions}
           canManage={canManage}
           canMoveProps={canMoveProps}
       />

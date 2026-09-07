@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { AssetManager } from "./asset-manager";
 import { SceneSidebar } from "./scene-sidebar";
+import { CharacterManager } from "./character-manager";
+import type { Character, SceneToken } from "@/types/entities";
 
 type Scene = {
   id: string;
@@ -20,19 +22,32 @@ type Asset = {
 
 type TableSidebarProps = {
   campaignId: string;
+  userId: string;
+  scene: { id: string; width: number; height: number } | null;
   scenes: Scene[];
   assets: Asset[];
   canManage: boolean;
+  characters: Character[];
+  members: { user_id: string; display_name: string }[];
+  tokens: SceneToken[];
+  onTokenCreated: (token: SceneToken) => void;
 };
 
 type SidebarTab =
   | "scenes"
-  | "assets";
+  | "assets"
+  | "characters";
 
 export function TableSidebar({
   campaignId,
+  userId,
+  scene,
   scenes,
   assets,
+  characters,
+  members,
+  tokens,
+  onTokenCreated,
   canManage,
 }: TableSidebarProps) {
   const [activeTab, setActiveTab] =
@@ -41,7 +56,7 @@ export function TableSidebar({
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r border-white/10 bg-[#101117]">
       {canManage ? (
-        <div className="grid grid-cols-2 border-b border-white/10">
+        <div className="grid grid-cols-3 border-b border-white/10">
           <button
             type="button"
             onClick={() =>
@@ -55,6 +70,14 @@ export function TableSidebar({
             ].join(" ")}
           >
             Cenas
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("characters")}
+            className={["px-2 py-3 text-sm transition", activeTab === "characters" ? "bg-white/10 text-white" : "text-ink-muted hover:bg-white/5 hover:text-white"].join(" ")}
+          >
+            Personagens
           </button>
 
           <button
@@ -81,7 +104,17 @@ export function TableSidebar({
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {activeTab === "assets" && canManage ? (
+        {activeTab === "characters" && canManage ? (
+          <CharacterManager
+            campaignId={campaignId}
+            userId={userId}
+            scene={scene}
+            characters={characters}
+            members={members}
+            tokens={tokens}
+            onTokenCreated={onTokenCreated}
+          />
+        ) : activeTab === "assets" && canManage ? (
           <AssetManager
             campaignId={campaignId}
             assets={assets}

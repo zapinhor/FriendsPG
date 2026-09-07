@@ -2,15 +2,30 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Application, Assets, Container, FederatedPointerEvent, Graphics, Sprite } from "pixi.js";
-import type { SceneProp } from "@/types/entities";
+
+export type CanvasItem = {
+  id: string;
+  name: string;
+  image_url: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  flip_horizontal?: boolean;
+  flip_vertical?: boolean;
+  z_index: number;
+  is_locked: boolean;
+  created_at: string;
+  canMove: boolean;
+  canResize: boolean;
+};
 
 type Scene = { id: string; name: string; background_url: string | null; width: number; height: number };
-type TransformPatch = Partial<Pick<SceneProp, "x" | "y" | "width" | "height">>;
+type TransformPatch = Partial<Pick<CanvasItem, "x" | "y" | "width" | "height">>;
 type TableCanvasProps = {
   scene: Scene | null;
-  props: SceneProp[];
-  canManage: boolean;
-  canMoveProps: boolean;
+  items: CanvasItem[];
   selectedPropId: string | null;
   onSelectProp: (id: string | null) => void;
   onPreviewTransform: (id: string, patch: TransformPatch) => void;
@@ -19,7 +34,7 @@ type TableCanvasProps = {
 
 type HandleDirection = { x: -1 | 0 | 1; y: -1 | 0 | 1; cursor: string };
 type PropView = {
-  prop: SceneProp;
+  prop: CanvasItem;
   container: Container;
   sprite: Sprite;
   outline: Graphics;
@@ -47,7 +62,7 @@ function positionHandle(view: PropView, handle: PropView["handles"][number]) {
   );
 }
 
-function renderPropView(view: PropView, selected: boolean, canManage: boolean, canMoveProps: boolean) {
+function renderPropView(view: PropView, selected: boolean) {
   const { prop, container, sprite, outline, handles } = view;
   container.position.set(prop.x, prop.y);
   container.rotation = prop.rotation * Math.PI / 180;
@@ -55,18 +70,18 @@ function renderPropView(view: PropView, selected: boolean, canManage: boolean, c
   sprite.height = prop.height;
   sprite.scale.x = Math.abs(sprite.scale.x) * (prop.flip_horizontal ? -1 : 1);
   sprite.scale.y = Math.abs(sprite.scale.y) * (prop.flip_vertical ? -1 : 1);
-  sprite.eventMode = canMoveProps && !prop.is_locked ? "static" : "none";
-  sprite.cursor = canMoveProps && !prop.is_locked ? "move" : "default";
+  sprite.eventMode = prop.canMove && !prop.is_locked ? "static" : "none";
+  sprite.cursor = prop.canMove && !prop.is_locked ? "move" : "default";
   outline.clear().rect(-prop.width / 2, -prop.height / 2, prop.width, prop.height).stroke({ color: 0x9eb7ff, width: 3 });
   outline.visible = selected;
   for (const handle of handles) {
     positionHandle(view, handle);
-    handle.graphic.visible = selected && canManage && !prop.is_locked;
+    handle.graphic.visible = selected && prop.canResize && !prop.is_locked;
     handle.graphic.eventMode = handle.graphic.visible ? "static" : "none";
   }
 }
 
-export function TableCanvas({ scene, props, canManage, canMoveProps, selectedPropId, onSelectProp, onPreviewTransform, onTransformProp }: TableCanvasProps) {
+export function TableCanvas({ scene, items: props, selectedPropId, onSelectProp, onPreviewTransform, onTransformProp }: TableCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const worldRef = useRef<Container | null>(null);
@@ -184,9 +199,13 @@ export function TableCanvas({ scene, props, canManage, canMoveProps, selectedPro
     if (!world) return;
     const propWorld = world;
     let cancelled = false;
-    const incomingIds = new Set(props.map((prop) => prop.id));
     for (const [id, view] of viewsRef.current) {
-      if (!incomingIds.has(id)) { propWorld.removeChild(view.container); view.container.destroy({ children: true }); viewsRef.current.delete(id); }
+      const incoming = props.find((prop) => prop.id === id);
+      if (!incoming || incoming.image_url !== view.prop.image_url) {
+        propWorld.removeChild(view.container);
+        view.container.destroy({ children: true });
+        viewsRef.current.delete(id);
+      }
     }
 
     async function addMissing() {
@@ -225,9 +244,9 @@ export function TableCanvas({ scene, props, canManage, canMoveProps, selectedPro
               if (!current) return;
               const local = propWorld.toLocal(event.global);
               current.prop = { ...current.prop, x: local.x - offsetX, y: local.y - offsetY };
-              renderPropView(current, true, canManage, canMoveProps);
+              renderPropView(current, true);
               const now = performance.now();
-              if (canManage && now - lastPreviewAt >= 33) { lastPreviewAt = now; callbacksRef.current.onPreviewTransform(prop.id, { x: current.prop.x, y: current.prop.y }); }
+              if (now - lastPreviewAt >= 33) { lastPreviewAt = now; callbacksRef.current.onPreviewTransform(prop.id, { x: current.prop.x, y: current.prop.y }); }
             });
             const finishDrag = () => {
               if (!dragging) return;
@@ -248,7 +267,7 @@ export function TableCanvas({ scene, props, canManage, canMoveProps, selectedPro
               let resizing = false;
               let startPointerX = 0;
               let startPointerY = 0;
-              let startProp: SceneProp | null = null;
+              let startProp: CanvasItem | null = null;
               let lastResizePreviewAt = 0;
               graphic.on("pointerdown", (event: FederatedPointerEvent) => {
                 event.stopPropagation();
@@ -298,7 +317,7 @@ export function TableCanvas({ scene, props, canManage, canMoveProps, selectedPro
                 const centerDx = effectiveDx * Math.cos(angle) - effectiveDy * Math.sin(angle);
                 const centerDy = effectiveDx * Math.sin(angle) + effectiveDy * Math.cos(angle);
                 current.prop = { ...current.prop, x: startProp.x + centerDx, y: startProp.y + centerDy, width, height };
-                renderPropView(current, true, canManage, canMoveProps);
+                renderPropView(current, true);
                 const now = performance.now();
                 if (now - lastResizePreviewAt >= 33) {
                   lastResizePreviewAt = now;
@@ -319,13 +338,13 @@ export function TableCanvas({ scene, props, canManage, canMoveProps, selectedPro
           } catch (error) { console.error(`Não foi possível carregar o prop ${prop.name}:`, error); continue; }
         }
         view.prop = prop;
-        renderPropView(view, selectedPropId === prop.id, canManage, canMoveProps);
+        renderPropView(view, selectedPropId === prop.id);
         propWorld.setChildIndex(view.container, propWorld.children.length - 1);
       }
     }
     void addMissing();
     return () => { cancelled = true; };
-  }, [props, selectedPropId, canManage, canMoveProps, canvasVersion]);
+  }, [props, selectedPropId, canvasVersion]);
 
   return <div ref={hostRef} className="absolute inset-0 overflow-hidden" />;
 }

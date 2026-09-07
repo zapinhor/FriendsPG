@@ -256,6 +256,20 @@ export interface Database {
         ];
       };
 
+      characters: {
+        Row: { id: string; campaign_id: string; name: string; image_url: string; controlled_by: string | null; created_by: string; created_at: string; updated_at: string };
+        Insert: { id?: string; campaign_id: string; name: string; image_url: string; controlled_by?: string | null; created_by: string; created_at?: string; updated_at?: string };
+        Update: { name?: string; image_url?: string; controlled_by?: string | null; updated_at?: string };
+        Relationships: [];
+      };
+
+      scene_tokens: {
+        Row: { id: string; scene_id: string; campaign_id: string; character_id: string; name: string; image_url: string; controlled_by: string | null; x: number; y: number; width: number; height: number; rotation: number; z_index: number; is_locked: boolean; created_by: string; created_at: string; updated_at: string };
+        Insert: { id?: string; scene_id: string; campaign_id: string; character_id: string; name: string; image_url: string; controlled_by?: string | null; x?: number; y?: number; width?: number; height?: number; rotation?: number; z_index?: number; is_locked?: boolean; created_by: string; created_at?: string; updated_at?: string };
+        Update: { x?: number; y?: number; width?: number; height?: number; rotation?: number; z_index?: number; is_locked?: boolean; name?: string; image_url?: string; controlled_by?: string | null; updated_at?: string };
+        Relationships: [];
+      };
+
       scene_props: {
         Row: {
           id: string;
